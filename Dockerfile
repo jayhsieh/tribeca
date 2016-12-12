@@ -101,9 +101,7 @@ RUN chmod 755 /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
 RUN ["/entrypoint.sh"]
 WORKDIR tribeca/service
-CMD ["mongod"]
 EXPOSE 2701
-
 CMD ["forever", "main.js"]
 
 

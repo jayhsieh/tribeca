@@ -53,7 +53,8 @@ RUN apt-get update \
 	&& apt-get install -y --no-install-recommends \
 		numactl \
 	&& rm -rf /var/lib/apt/lists/*
-
+RUN cd /tmp
+RUN git config --global http.sslVerify false
 RUN git clone https://github.com/contino/tribeca.git
 
 WORKDIR tribeca

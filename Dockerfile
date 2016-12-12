@@ -43,11 +43,9 @@ RUN set -x \
 	&& rm -rf /var/lib/apt/lists/* \
 	&& rm -rf /var/lib/mongodb \
 	&& mv /etc/mongod.conf /etc/mongod.conf.orig
-
 RUN mkdir -p /data/db /data/configdb \
 	&& chown -R mongodb:mongodb /data/db /data/configdb
 VOLUME /data/db /data/configdb
-EXPOSE 27017
 CMD ["mongod"]
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends \
@@ -118,10 +116,12 @@ ENV BitfinexOrderDestination Bitfinex
 #ENV CoinbaseRestUrl https://api.gdax.com
 #ENV CoinbaseWebsocketUrl wss://ws-feed.gdax.com
 
-WORKDIR tribeca/service
-CMD ["mongod"]
-CMD ["forever", "main.js"]
 COPY docker-entrypoint.sh /entrypoint.sh
 RUN chmod 755 /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
+RUN ["/entrypoint.sh"]
+WORKDIR tribeca/service
+CMD ["mongod"]
+CMD ["forever", "main.js"]
+
 

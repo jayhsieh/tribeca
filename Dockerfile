@@ -46,7 +46,6 @@ RUN set -x \
 RUN mkdir -p /data/db /data/configdb \
 	&& chown -R mongodb:mongodb /data/db /data/configdb
 VOLUME /data/db /data/configdb
-CMD ["mongod"]
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends \
 		numactl \
@@ -54,20 +53,12 @@ RUN apt-get update \
 RUN cd /tmp
 RUN git config --global http.sslVerify false
 RUN git clone https://github.com/contino/tribeca.git
-
 WORKDIR tribeca
-
-# Chose the branch you want to build. Leave as it is if you want to build the master branch (recommanded).
-# RUN git checkout -B YOUR-NAME-OF-THE-BRANCH --track remotes/origin/NAME-OF-THE-BRANCH-IN-GITHUB
-
 RUN npm install -g grunt-cli typings@0.8.1 forever
 RUN npm install
 RUN typings install
 RUN grunt compile
-
 EXPOSE 3000 5000
-
-# General config properties. Properties with `NULL` should be replaced with your own exchange account information.
 ENV TRIBECA_MODE dev
 ENV EXCHANGE null
 ENV TradedPair BTC/USD
@@ -105,23 +96,14 @@ ENV BitfinexHttpUrl https://api.bitfinex.com/v1
 ENV BitfinexKey NULL
 ENV BitfinexSecret NULL
 ENV BitfinexOrderDestination Bitfinex
-
-# PROD - values provided for reference.
-## HitBtc
-#ENV HitBtcPullUrl http://api.hitbtc.com
-#ENV HitBtcOrderEntryUrl wss://api.hitbtc.com:8080
-#ENV HitBtcMarketDataUrl ws://api.hitbtc.com:80
-#ENV HitBtcSocketIoUrl https://api.hitbtc.com:8081
-## Coinbase
-#ENV CoinbaseRestUrl https://api.gdax.com
-#ENV CoinbaseWebsocketUrl wss://ws-feed.gdax.com
-
 COPY docker-entrypoint.sh /entrypoint.sh
 RUN chmod 755 /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
 RUN ["/entrypoint.sh"]
 WORKDIR tribeca/service
 CMD ["mongod"]
+EXPOSE 2701
+
 CMD ["forever", "main.js"]
 
 

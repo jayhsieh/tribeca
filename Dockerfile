@@ -120,3 +120,6 @@ ENV BitfinexOrderDestination Bitfinex
 
 WORKDIR tribeca/service
 CMD ["forever", "main.js"]
+COPY docker-entrypoint.sh /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
+

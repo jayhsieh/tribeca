@@ -119,6 +119,7 @@ ENV BitfinexOrderDestination Bitfinex
 #ENV CoinbaseWebsocketUrl wss://ws-feed.gdax.com
 
 WORKDIR tribeca/service
+CMD ["mongod"]
 CMD ["forever", "main.js"]
 COPY docker-entrypoint.sh /entrypoint.sh
 RUN chmod 755 /entrypoint.sh

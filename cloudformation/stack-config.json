@@ -1,6 +1,5 @@
 {
     "Parameters": {
-        "EcsInstanceKeyName": "isubuz",
         "ApplicationName": "tribeca",
         "ApplicationDockerRepository": "tribeca"
     }

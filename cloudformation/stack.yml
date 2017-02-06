@@ -202,12 +202,43 @@ Resources:
             - ContainerPort: 27017
               HostPort: 27017
 
+  EcsServiceRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ["ecs.amazonaws.com"]
+            Action: ["sts:AssumeRole"]
+      Path: "/"
+      Policies:
+        - PolicyName: "ecs-service"
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "elasticloadbalancing:DeregisterInstancesFromLoadBalancer"
+                  - "elasticloadbalancing:DeregisterTargets"
+                  - "elasticloadbalancing:Describe*"
+                  - "elasticloadbalancing:RegisterInstancesWithLoadBalancer"
+                  - "elasticloadbalancing:RegisterTargets"
+                  - "ec2:Describe*"
+                  - "ec2:AuthorizeSecurityGroupIngress"
+                Resource: "*"
+
   ApplicationService:
     Type: "AWS::ECS::Service"
     Properties:
+      Role: !Ref EcsServiceRole
       Cluster: !Sub "${Environment}_ecs_cluster"
       DesiredCount: 5
       DeploymentConfiguration: 
         MinimumHealthyPercent: 50 
       TaskDefinition: !Ref ApplicationTaskDefinition
+      LoadBalancers:
+        - ContainerName: !Ref ApplicationName
+          ContainerPort: 3000
+          LoadBalancerName: !Sub "${Environment}-ecs-elb"
+
 

@@ -1,0 +1,244 @@
+Parameters:
+  ### Required Parameters ###
+  
+  ApplicationName:
+    Description: "Name of the application"
+    Type: String
+
+  ApplicationDockerRepository:
+    Description: "Name of the ECR Docker repository"
+    Type: String
+
+  Environment:
+    Description: "Name of the environment"
+    Type: String
+    Default: "dev"
+
+  ### Optional Parameters ###
+  
+  CreateEcsCluster:
+    Description: |
+      If "true", this template will also create an ECS cluster containing the 
+      ASG and LaunchConfiguration for the container instances. 
+    Type: String
+    Default: false
+
+  ApplicationDockerImageTag:
+    Description: "Docker image tag passed in the ECS task definition"
+    Type: String
+    Default: "latest"
+
+  EcsAsgMinSize:
+    Description: "Minimum size of the ASG running the ECS container instances"
+    Type: Number
+    Default: 2
+
+  EcsAsgMaxSize:
+    Description: "Maximum size of the ASG running the ECS container instances"
+    Type: Number
+    Default: 2
+
+  EcsAsgDesiredCapacity:
+    Description: "Desired capacity of the ASG running the ECS container instances"
+    Type: Number
+    Default: 2
+
+  EcsInstanceType:
+    Description: "Type of the instance running in the ECS cluster"
+    Type: String
+    Default: "t2.medium"
+
+  EcsInstanceKeyName:
+    Description: "Keyname of the ECS container EC2 instance"
+    Type: String
+    Default: "ecs-inst-key"
+
+Conditions:
+  CreateEcsClusterResources: !Equals [!Ref CreateEcsCluster, true]
+
+Mappings:
+  AWSRegionToAMI:
+      us-east-1:
+        AMIID: ami-eca289fb
+      us-east-2:
+        AMIID: ami-446f3521
+      us-west-1:
+        AMIID: ami-9fadf8ff
+      us-west-2:
+        AMIID: ami-7abc111a
+      eu-west-1:
+        AMIID: ami-a1491ad2
+      eu-central-1:
+        AMIID: ami-54f5303b
+      ap-northeast-1:
+        AMIID: ami-9cd57ffd
+      ap-southeast-1:
+        AMIID: ami-a900a3ca
+      ap-southeast-2:
+        AMIID: ami-5781be34
+
+Resources:
+  ApplicationCluster:
+    Type: "AWS::ECS::Cluster"
+    Condition: CreateEcsClusterResources
+    Properties:
+      ClusterName: !Sub "${Environment}_ecs_cluster"
+
+  EcsInstanceRole:
+    Type: "AWS::IAM::Role"
+    Condition: CreateEcsClusterResources
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: [ec2.amazonaws.com]
+            Action: ["sts:AssumeRole"]
+      Path: "/"
+      Policies:
+        - PolicyName: ecs-service
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "ecs:CreateCluster"
+                  - "ecs:DeregisterContainerInstance"
+                  - "ecs:DiscoverPollEndpoint"
+                  - "ecs:Poll"
+                  - "ecs:RegisterContainerInstance"
+                  - "ecs:StartTelemetrySession"
+                  - "ecs:Submit*"
+                  - "ecr:GetAuthorizationToken"
+                  - "ecr:GetDownloadUrlForLayer"
+                  - "ecr:BatchGetImage"
+                  - "ecr:BatchCheckLayerAvailability"
+                  - "ecr:PutImage"
+                  - "ecr:InitiateLayerUpload"
+                  - "ecr:UploadLayerPart"
+                  - "ecr:CompleteLayerUpload"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource: "*"
+
+  EcsInstanceProfile:
+    Type: "AWS::IAM::InstanceProfile"
+    Condition: CreateEcsClusterResources
+    Properties:
+      Path: "/"
+      Roles: [!Ref EcsInstanceRole]
+
+  EcsInstanceSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"  
+    Condition: CreateEcsClusterResources
+    Properties:
+      GroupDescription: "ECS container instances SG"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22 
+          ToPort: 22
+          CidrIp: "0.0.0.0/0"
+        - IpProtocol: tcp
+          FromPort: 3000
+          ToPort: 3000
+          CidrIp: "0.0.0.0/0"
+
+  EcsInstancesLC:
+    Type: "AWS::AutoScaling::LaunchConfiguration"
+    Condition: CreateEcsClusterResources
+    Properties:
+      ImageId: !FindInMap [AWSRegionToAMI, !Ref "AWS::Region", AMIID]
+      SecurityGroups: [!Ref EcsInstanceSecurityGroup]
+      InstanceType: !Ref EcsInstanceType
+      IamInstanceProfile: !Ref EcsInstanceProfile
+      KeyName: !Ref EcsInstanceKeyName
+      UserData: 
+        "Fn::Base64": !Sub |
+          #!/bin/bash -xe
+          echo ECS_CLUSTER=${ApplicationCluster} >> /etc/ecs/ecs.config
+          yum install -y aws-cfn-bootstrap unzip
+          curl -LOk https://github.com/awslabs/amazon-ecr-credential-helper/archive/master.zip
+          unzip master.zip
+          cd amazon-ecr-credential-helper-master && make docker
+          cp bin/local/docker-credential-ecr-login /usr/local/bin
+          mkdir /home/ec2-user/.docker
+          echo "{\"credsStore\":\"ecr-login\"}" > /home/ec2-user/.docker/config.json
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource EcsAutoScalingGroup --region ${AWS::Region}
+
+  EcsAutoScalingGroup:
+    Type: "AWS::AutoScaling::AutoScalingGroup"
+    Condition: CreateEcsClusterResources
+    Properties:
+      AvailabilityZones: 
+        "Fn::GetAZs": !Ref "AWS::Region"
+      LaunchConfigurationName: !Ref EcsInstancesLC
+      MinSize: !Ref EcsAsgMinSize
+      MaxSize: !Ref EcsAsgMaxSize
+      DesiredCapacity: !Ref EcsAsgDesiredCapacity
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT15M
+        Count: !Ref EcsAsgMinSize
+    UpdatePolicy:
+      AutoScalingReplacingUpdate:
+        WillReplace: true
+
+  ApplicationTaskDefinition:
+    Type: "AWS::ECS::TaskDefinition"
+    Properties:
+      Family: !Join ['', [!Ref "AWS::StackName", "-ecs-app"]]
+      ContainerDefinitions:
+        - Name: !Ref ApplicationName
+          Image: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ApplicationDockerRepository}:${ApplicationDockerImageTag}"
+          Memory: 500
+          PortMappings:
+            - ContainerPort: 3000
+              HostPort: 3000
+          Links:
+            - !Sub "${ApplicationName}-mongo"
+        - Name: !Sub "${ApplicationName}-mongo"
+          Image: mongo
+          Memory: 500
+          PortMappings:
+            - ContainerPort: 27017
+              HostPort: 27017
+
+  EcsServiceRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ["ecs.amazonaws.com"]
+            Action: ["sts:AssumeRole"]
+      Path: "/"
+      Policies:
+        - PolicyName: "ecs-service"
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "elasticloadbalancing:DeregisterInstancesFromLoadBalancer"
+                  - "elasticloadbalancing:DeregisterTargets"
+                  - "elasticloadbalancing:Describe*"
+                  - "elasticloadbalancing:RegisterInstancesWithLoadBalancer"
+                  - "elasticloadbalancing:RegisterTargets"
+                  - "ec2:Describe*"
+                  - "ec2:AuthorizeSecurityGroupIngress"
+                Resource: "*"
+
+  ApplicationService:
+    Type: "AWS::ECS::Service"
+    Properties:
+      Role: !Ref EcsServiceRole
+      Cluster: !Sub "${Environment}_ecs_cluster"
+      DesiredCount: 5
+      DeploymentConfiguration: 
+        MinimumHealthyPercent: 50 
+      TaskDefinition: !Ref ApplicationTaskDefinition
+      LoadBalancers:
+        - ContainerName: !Ref ApplicationName
+          ContainerPort: 3000
+          LoadBalancerName: !Sub "${Environment}-ecs-elb"
+
+

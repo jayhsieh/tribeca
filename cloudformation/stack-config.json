@@ -1,0 +1,6 @@
+{
+    "Parameters": {
+        "ApplicationName": "tribeca",
+        "ApplicationDockerRepository": "tribeca"
+    }
+}

@@ -1,19 +1,15 @@
 FROM node:5
 RUN apt-get update
 
-RUN apt-get install -y git
-
-RUN git clone http://github.com/contino/tribeca.git
-
-WORKDIR tribeca
-
-# Chose the branch you want to build. Leave as it is if you want to build the master branch (recommanded).
-# RUN git checkout -B YOUR-NAME-OF-THE-BRANCH --track remotes/origin/NAME-OF-THE-BRANCH-IN-GITHUB
+# Create app directory
+RUN mkdir -p /usr/src/app/
+WORKDIR /usr/src/app
 
 RUN npm install -g grunt-cli typings@0.8.1 forever
+
+# Install app dependencies
+COPY package.json /usr/src/app/
 RUN npm install
-RUN typings install
-RUN grunt compile
 
 EXPOSE 3000 5000
 
@@ -66,5 +62,11 @@ ENV BitfinexOrderDestination Bitfinex
 #ENV CoinbaseRestUrl https://api.gdax.com
 #ENV CoinbaseWebsocketUrl wss://ws-feed.gdax.com
 
+# Bundle app source
+COPY . /usr/src/app
+RUN typings install
+RUN grunt compile
+
+# Grunt creates the `tribeca` directory.
 WORKDIR tribeca/service
 CMD ["forever", "main.js"]
